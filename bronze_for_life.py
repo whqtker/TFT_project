@@ -1,10 +1,7 @@
-from db import get_data
-from itertools import combinations
+from db import get_data, insert_data
 
-# set 시즌의 selected_champions으로 구성된 팀의 활성화된 특성 리턴
-def count_active_traits(selected_champions, set):
+def count_all_traits(selected_champions, set):
     champions_data = get_data('tft', 'champions')
-    traits_data = get_data('tft', 'traits')
 
     # 선택된 세트에 해당하는 챔피언 데이터만 추출
     champions_data = [champion for champion in champions_data if champion['set'] == "set" + str(set)] 
@@ -22,6 +19,12 @@ def count_active_traits(selected_champions, set):
                 trait_count[trait] += 1
             else:
                 trait_count[trait] = 1
+
+    return trait_count
+
+# set 시즌의 trait_count에서 활성화된 특성 리턴
+def count_active_traits(trait_count, set):
+    traits_data = get_data('tft', 'traits')
     
     active_traits = {}
     
@@ -35,41 +38,34 @@ def count_active_traits(selected_champions, set):
     
     return active_traits
 
-def generate_possible_combinations(level, selected_champions, set):
-    remaining_slots = level - len(selected_champions) # 배치 가능한 챔피언 수
-
-    if remaining_slots <= 0:
-        print("선택된 챔피언 수가 레벨보다 많습니다.")
-        return []
-    
+# set_number 시즌 챔피언 중 1~level 크기의 모든 팀 조합 생성
+def generate_possible_combinations(level, set_number):
     champions_data = get_data('tft', 'champions')
-    champions_data = [champion for champion in champions_data if champion['set'] == "set" + str(set)]
-
-    # 배치 가능한 챔피언 후보들
-    remained_champions = [champion['name'] for champion in champions_data if champion['name'] not in selected_champions and champion['traits']]
-
-    possible_combinations = []
-
-    for index, combo in enumerate(combinations(remained_champions, remaining_slots)):
-        print(f"Processing combination {index + 1}/{len(list(combinations(remained_champions, remaining_slots)))}")
-        full_team = selected_champions + list(combo)
-        active_traits = count_active_traits(full_team, set)
-        possible_combinations.append((full_team, active_traits))
+    champions_data = [champion for champion in champions_data if champion['set'] == "set" + str(set_number)]
     
-    return possible_combinations
-
-def sort_and_print_combinations(possible_combinations):
-    sorted_combinations = sorted(possible_combinations, key=lambda x: sum(1 for style in x[1].values() if style == 'bronze'), reverse=True)
+    champions = {champion['name']: champion['traits'] for champion in champions_data}
     
-    for team, traits in sorted_combinations[:10]:
-        print(f"Team: {team}")
-        print(f"Active Traits: {traits}")
-        print(f"활성화된 브론즈 특성 수: {sum(1 for style in traits.values() if style == 'bronze')}")
-        print()
+    def backtrack(current_team, remaining_slots):
+        if remaining_slots == 0:
+            trait_count = count_all_traits(current_team, set_number)
+            insert_data('tft', 'combinations', {
+                'team': current_team,
+                'traits': trait_count,
+                'team_size': len(current_team),
+                'set_number': set_number
+            })
+            return
+        
+        for champion in champions.items():
+            if champion in current_team:
+                continue
+            new_team = current_team + [champion]
+            backtrack(new_team, remaining_slots - 1)
+    
+    for team_size in range(1, level + 1):
+        backtrack([], team_size)
 
-level = 5
-selected_champions = ["암베사", "말자하", "렐"]
-set = 13
+level = 13 # 배치 가능한 챔피언 수
+set_number = 13 # 시즌 번호
 
-possible_combinations = generate_possible_combinations(level, selected_champions, set)
-sort_and_print_combinations(possible_combinations)
+generate_possible_combinations(level, set_number)
